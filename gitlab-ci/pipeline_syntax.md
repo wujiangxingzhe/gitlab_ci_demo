@@ -379,7 +379,7 @@ only 和 except 用分支策略来限制 jobs 构建：
 job:
     # use regexp
     only:
-        - /^isuse-.*$/
+        - /^issue-.*$/
     # use specicial keywords
     except:
         - branches
@@ -493,7 +493,7 @@ codescan:
 * 条件判断从上到下，匹配即停止
 * 多条条件匹配可以使用&&，||
 
-**案例：**把only修改为rules if
+**案例：** 把only修改为rules if
 * only
 ```
 stages:
@@ -631,9 +631,9 @@ codescan:
   parallel: 3
 ```
 
-**案例：**，综合案例，
+**案例：** 综合案例
 * 可以在project级别，也可以在job级别，通过variables定义变量
-* 在某个job中定义的变量，无法在另一个变量中访问到，比如这里的MY_VARIABLE
+* 在某个job中定义的变量，无法在另一个job中访问到，比如这里的MY_VARIABLE
 * prechecking job的逻辑
 ```
 stages:
