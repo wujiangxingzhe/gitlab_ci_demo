@@ -14,8 +14,22 @@
 
 ### 2.1 安装java
 ```
-sudo yum install -y java-11-openjdk
+sudo yum install -y java-11-openjdk # sudo yum install -y java-11-openjdk-devel，如果没有devel，安装的java没有javac命令
 ```
+当安装java11时，cobertura-maven-plugin报错，`[ERROR] Failed to execute goal org.codehaus.mojo:cobertura-maven-plugin:2.7:instrument (default-cli) on project my-app: Execution default-cli of goal org.codehaus.mojo:cobertura-maven-plugin:2.7:instrument failed: Plugin org.codehaus.mojo:cobertura-maven-plugin:2.7 or one of its dependencies could not be resolved: The following artifacts could not be resolved: com.sun:tools:jar:0: Could not find artifact com.sun:tools:jar:0 at specified path /usr/lib/jvm/java-11-openjdk-11.0.23.0.9-2.el7_9.x86_64/../lib/tools.jar -> [Help 1]`
+需要切换到java8
+```
+# yum install -y java-1.8.0-openjdk-devel
+# java -version
+openjdk version "1.8.0_412"
+OpenJDK Runtime Environment (build 1.8.0_412-b08)
+OpenJDK 64-Bit Server VM (build 25.412-b08, mixed mode)
+
+# javac -version
+javac 1.8.0_412
+```
+* 可以通过`alternatives --config java`切换java版本；`alternatives --config javac`切换javac版本
+![alt text](dc2029de-c414-4cf4-9d1a-d119073501fd.png)
 
 ### 2.2 检查java是否安装成功
 ```

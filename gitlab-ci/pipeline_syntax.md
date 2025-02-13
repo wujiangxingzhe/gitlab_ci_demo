@@ -797,9 +797,184 @@ cache:
 
 
 ## 11. artifacts
+用于指定在作业成功或者失败时应附件到作业的文件或目录的列表。作业完成后，工件将被推送到Gitlab，并可在Gitlab UI中下载
+```
+artifacts:
+  paths:
+    - target/
+```
+* 在target目录下的文件会被上传到gitlab
+
+**案例**
+```
+before_script:
+  - echo "before-script!!"
+
+variables:
+  GIT_DEPTH: 0
+  GIT_CLEAN_FLAGS: '-ffdx'
+  DOMAIN: example.com
+
+cache:
+  paths:
+    - target/
+
+stages:
+  - build
+  - test
+  - deploy
+
+build:
+  before_script:
+    - echo "before-script in job"
+  stage: build
+  tags:
+    - build
+  only:
+    - develop
+    - main
+  script:
+    - ls
+    - id
+    - mvn test
+    - mvn cobertura:cobertura
+    - ls target
+    - echo "$DOMAIN"
+    - false && true ; exit_code=$?
+    - if [ $exit_code -ne 0 ]; then echo "Previous command failed"; fi;
+    - sleep 2;
+  after_script:
+    - echo "after script in job"
+  artifacts:
+    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
+    when: on_success
+    paths:
+      - target/*.jar # 收集target目录下的jar文件
+    reports:
+      junit: target/surefire-reports/TEST-*.xml # 收集测试结果xml文件
+      coverage_report: 
+        coverage_format: cobertura
+        path: target/site/cobertura/coverage.xml # 收集覆盖率xml文件
+  coverage: '/Code coverage: \d+\.\d+/'
+
+unittest:
+  dependencies:
+    - build
+  stage: test
+  tags:
+    - build
+  only:
+    - develop
+    - main
+  script:
+    - echo "run test"
+    # - echo 'test' >> target/a.txt
+    - ls target
+  retry:
+    max: 2
+    when:
+      - script_failure
+
+deploy:
+  stage: deploy
+  tags:
+    - build
+  only:
+    - develop
+    - main
+  script:
+    - echo "run deploy"
+    - ls target
+  retry:
+    max: 2
+    when:
+      - script_failure
 
 
+after_script:
+  - echo "after-script"
+```
+![alt text](29fc8cda-ccaa-463e-b7f7-b1e88a2b5b0e.png)
 
+* 可以在在Gitlab UI上下载jar包、unit test report、coverage report
+![alt text](821cacd8-aeb3-4ef3-a049-6318d9ab98f3.png)
+
+* 这些对应的文件可以在gitlab-runner的builds目录下找到
+
+
+```
+[root@cent7 demo-maven-service]# pwd
+/home/gitlab-runner/builds/t1_hHHu2A/0/demo/demo-maven-service
+[root@cent7 demo-maven-service]# 
+[root@cent7 demo-maven-service]# tree target/
+target/
+├── classes
+│   └── com
+│       └── example
+│           └── App.class
+├── cobertura
+│   └── cobertura.ser
+├── generated-classes
+│   └── cobertura
+│       ├── cobertura.properties
+│       └── com
+│           └── example
+│               └── App.class
+├── generated-sources
+│   └── annotations
+├── generated-test-sources
+│   └── test-annotations
+├── maven-archiver
+│   └── pom.properties
+├── maven-status
+│   └── maven-compiler-plugin
+│       ├── compile
+│       │   └── default-compile
+│       │       ├── createdFiles.lst
+│       │       └── inputFiles.lst
+│       └── testCompile
+│           └── default-testCompile
+│               ├── createdFiles.lst
+│               └── inputFiles.lst
+├── my-app-1.0-SNAPSHOT.jar
+├── site
+│   └── cobertura
+│       ├── com.example.App.html
+│       ├── css
+│       │   ├── help.css
+│       │   ├── main.css
+│       │   ├── sortabletable.css
+│       │   ├── source-viewer.css
+│       │   └── tooltip.css
+│       ├── frame-packages.html
+│       ├── frame-sourcefiles-com.example.html
+│       ├── frame-sourcefiles.html
+│       ├── frame-summary-com.example.html
+│       ├── frame-summary.html
+│       ├── help.html
+│       ├── images
+│       │   ├── blank.png
+│       │   ├── downsimple.png
+│       │   └── upsimple.png
+│       ├── index.html
+│       └── js
+│           ├── customsorttypes.js
+│           ├── popup.js
+│           ├── sortabletable.js
+│           └── stringbuilder.js
+├── surefire-reports
+│   ├── com.example.AppTest.txt
+│   └── TEST-com.example.AppTest.xml
+└── test-classes
+    └── com
+        └── example
+            └── AppTest.class
+
+28 directories, 33 files
+```
+![alt text](2d57ad0d-14d8-4657-89de-a3a506bf3163.png)
+
+* 对于`[ERROR] Failed to execute goal org.codehaus.mojo:cobertura-maven-plugin:2.7:instrument (default-cli) on project my-app: Execution default-cli of goal org.codehaus.mojo:cobertura-maven-plugin:2.7:instrument failed: Plugin org.codehaus.mojo:cobertura-maven-plugin:2.7 or one of its dependencies could not be resolved: The following artifacts could not be resolved: com.sun:tools:jar:0: Could not find artifact com.sun:tools:jar:0 at specified path /usr/lib/jvm/java-11-openjdk-11.0.23.0.9-2.el7_9.x86_64/../lib/tools.jar -> [Help 1]`错误，需要将java版本降到java 8
 
 ## 12. dependencies
 
