@@ -807,7 +807,7 @@ artifacts:
 
 **案例**
 ```
-before_script:
+before_script:  # 在每个job执行前执行
   - echo "before-script!!"
 
 variables:
@@ -891,15 +891,48 @@ deploy:
       - script_failure
 
 
-after_script:
+after_script: # 在每个job结束之后执行
   - echo "after-script"
 ```
 ![alt text](29fc8cda-ccaa-463e-b7f7-b1e88a2b5b0e.png)
 
 * 可以在在Gitlab UI上下载jar包、unit test report、coverage report
 ![alt text](821cacd8-aeb3-4ef3-a049-6318d9ab98f3.png)
+* 测试结果；如果看不到，可能是默认关闭掉了，登录gitlab-rails console, 执行`Feature.enable(:junit_pieline_view)`即可
+![alt text](54509afb-566d-452f-8894-9aec2d923750.png)
 
 * 这些对应的文件可以在gitlab-runner的builds目录下找到
+
+### 11.1 artifacts:expose_as 展示制品名称
+关键字expose_as可以设置在UI上展示的制品名称，如果不设置，则默认使用文件名
+
+### 11.2 artifacts:name 设置制品名称
+* 不是Gitlab UI上展示的名称，以jar包为例，是生成的jar包的名称
+
+### 11.3 artifacts:when 知名创建条件
+* 用于在作业失败或成功时上传文件
+   * always：总是上传
+   * on_success：成功时上传, 默认值
+   * on_failure：失败时上传
+
+
+### 11.4 artifacts:expire_in 设置过期时间
+* 设置制品的过期时间，默认是30天
+* 可以使用以下单位：
+  * s：秒
+  * m：分钟
+  * h：小时
+  * d：天
+  * w：周
+  * y：年
+
+
+
+### 11.5 artifacts:reports:junit 单元测试报告
+* 收集junit测试报告，用于展示测试结果
+
+
+### 11.6 artifacts:reports:coverage_report  代码覆盖率报告
 
 
 ```
@@ -976,14 +1009,434 @@ target/
 
 * 对于`[ERROR] Failed to execute goal org.codehaus.mojo:cobertura-maven-plugin:2.7:instrument (default-cli) on project my-app: Execution default-cli of goal org.codehaus.mojo:cobertura-maven-plugin:2.7:instrument failed: Plugin org.codehaus.mojo:cobertura-maven-plugin:2.7 or one of its dependencies could not be resolved: The following artifacts could not be resolved: com.sun:tools:jar:0: Could not find artifact com.sun:tools:jar:0 at specified path /usr/lib/jvm/java-11-openjdk-11.0.23.0.9-2.el7_9.x86_64/../lib/tools.jar -> [Help 1]`错误，需要将java版本降到java 8
 
-## 12. dependencies
+## 12. dependencies - 获取制品
+定义要获取工作的作业列表，只能从当前阶段之前执行的阶段定义作业。定义一个空数组将跳过下载该作业的任何工作不会考虑先前作业的状态，因此，如果它失败或是未运行的手动作业，则不会发生错误。如果设置为依赖项的作业的工作已过期或删除，那么依赖项作业将失败
+
+```
+unittest:
+  dependencies:
+    - build
+```
+![alt text](49dce36e-48fe-4729-9268-7a28cedfdaf1.png)
+* 从哪儿下载，下载之后存放在哪里？
+
+## 13. needs - 阶段并行(不同stage)
+* 可无序执行作业，无需按照阶段顺序运行某些作业，可以让多个阶段同时运行
+* 如果needs: 设置为指向因only/except规则而未实例化的作业，或者不存在，则创建管道时会出现YAML错误
+
+**案例一**：不用needs的pipeline
+```
+stages:
+  - build
+  - test
+  - deploy
+
+module-a-build:
+  stage: build
+  script:
+    - echo "hello3a"
+    - sleep 10
+
+module-b-build:
+  stage: build
+  script:
+    - echo "hello3b"
+    - sleep 20
+
+module-a-test:
+  stage: test
+  script:
+    - echo "hello3a"
+    - sleep 5
+#  needs: ["module-a-build"]
+
+module-b-test:
+  stage: test
+  script:
+    - echo "hello3b"
+    - sleep 5
+#  needs: ["module-b-build"]
+```
+![alt text](3a8675fb450b8417ae642e56f8833c51.png)
+
+![alt text](8ed902a8580e0aeb6b0169e7b38ae58a.png)
+
+* **test job要等build job执行完才能执行**，按照stage中定义的顺序执行，先执行build，然后执行test
 
 
-## 13. needs
+**案例二**：使用needs的pipeline
+```
+stages:
+  - build
+  - test
+  - deploy
+
+module-a-build:
+  stage: build
+  script:
+    - echo "hello3a"
+    - sleep 10
+
+module-b-build:
+  stage: build
+  script:
+    - echo "hello3b"
+    - sleep 20
+
+module-a-test:
+  stage: test
+  script:
+    - echo "hello3a"
+    - sleep 5
+  needs: ["module-a-build"]
+
+module-b-test:
+  stage: test
+  script:
+    - echo "hello3b"
+    - sleep 5
+  needs: ["module-b-build"]
+```
+![alt text](aece426b8e24b6ffb819f8a5c33cce36.png)
+
+![alt text](b9c24eb292ab482ce3a938a1d9c77fea.png)
+
+* test job可以在build job执行完之前执行，只要其依赖的build job执行完毕，已经不是按照stage里定义的build->test顺序执行了
+
+
+### 13.1 needs下载制品
+```
+module_a_test:
+  stage: test
+  needs:
+    - job: module_a_build # 下载指定job的制品，但是这个job要生成制品
+      artifacts: true # 下载制品，同dependencies
+```
+
 
 ## 14. include
+* 可以允许引入外部YAML文件，文件具有扩展名.yml或.yaml
+* 使用合并功能可以自定义和覆盖包含本地定义的CI / CD配置。
+* 引入同一存储库中的文件，使用相对于根目录的完整路径进行引用，与配置文件在同一分支上使用。
+
+### 14.1 include:local - 引入本地配置
+引入**同一存储库**中的文件，使用**相对于根目录的完整路径**进行引用，与配置文件在**同一分支**上使用
+```
+include:
+  local: 'ci/localci.yml'
+```
+
+* 文件结构
+
+![alt text](93f4599a-78fb-41de-9a3f-d1e3bbea242b.png)
+
+**案例一：简单引用local**
+**ci/localci.yml**
+```
+# ci/localci.yml
+
+deployjob:
+  stage: deploy
+  script: echo "deploy in the localci.yml"
+```
+**.gitlab-ci.yml**
+```
+stages:
+  - build
+  - test
+  - deploy
+
+include:
+  local: "ci/localci.yml"  # 引入本地配置
+  
+module-a-build:
+  stage: build
+  script:
+    - echo "hello3a"
+    - sleep 10
+
+module-b-build:
+  stage: build
+  script:
+    - echo "hello3b"
+    - sleep 20
+
+module-a-test:
+  stage: test
+  script:
+    - echo "hello3a"
+    - sleep 5
+  needs: ["module-a-build"]
+
+module-b-test:
+  stage: test
+  script:
+    - echo "hello3b"
+    - sleep 5
+  needs: ["module-b-build"]
+```
+![alt text](87e45552-50c9-416f-92cc-a4a4690db550.png)
+
+* ci/localci.yml中的deployjob被包含进来，并且与module-a-test、module-b-test平级，所以deployjob的stage为deploy，而不是test
+
+**案例二：local中的job与.gitlab-ci.yml中的一样**
+* 还是原来的ci/localci.yml
+**.gitlab-ci.yml**
+
+```
+stages:
+  - build
+  - test
+  - deploy
+
+include:
+  local: "ci/localci.yml"
+
+deployjob:    # job与localci.yml中的job一样，但是script输出内容不同
+  stage: deploy
+  script: echo "deploy in the .gitlab-ci.yml"
+  
+module-a-build:
+  stage: build
+  script:
+    - echo "hello3a"
+    - sleep 10
+
+module-b-build:
+  stage: build
+  script:
+    - echo "hello3b"
+    - sleep 20
+
+module-a-test:
+  stage: test
+  script:
+    - echo "hello3a"
+    - sleep 5
+  needs: ["module-a-build"]
+
+module-b-test:
+  stage: test
+  script:
+    - echo "hello3b"
+    - sleep 5
+  needs: ["module-b-build"]
+```
+![alt text](8bccb407-8eff-4a29-85be-855236d74a1d.png)
+
+![alt text](e7917893-8f51-42e6-8cb6-12d0e4c786a9.png)
+
+**.gitlab-ci.yml中的job会覆盖ci/localci.yml中的job**
+
+**案例三：local中的job与.gitlab-ci.yml中有差异**
+
+**ci/localci.yml**
+```
+# ci/localci.yml
+
+deployjob:
+  stage: deploy
+  script: echo "deploy in the localci.yml"
+  only:   # 增加了条件
+    - dev
+```
+**.gitlab-ci.yml**
+```
+stages:
+  - build
+  - test
+  - deploy
+
+include:
+  local: "ci/localci.yml"
+
+deployjob:
+  stage: deploy
+  script: echo "deploy in the .gitlab-ci.yml"
+  
+module-a-build:
+  stage: build
+  script:
+    - echo "hello3a"
+    - sleep 10
+
+module-b-build:
+  stage: build
+  script:
+    - echo "hello3b"
+    - sleep 20
+
+module-a-test:
+  stage: test
+  script:
+    - echo "hello3a"
+    - sleep 5
+  needs: ["module-a-build"]
+
+module-b-test:
+  stage: test
+  script:
+    - echo "hello3b"
+    - sleep 5
+  needs: ["module-b-build"]
+```
+![alt text](14408303-231b-4482-b9b4-c1849cc879d5.png)
+* 此时可以发现，deployjob并没有执行，二者的作业进行了合并，只有dev分支才可以执行；因为仓库只有main分支，所以这个job并没有执行
+
+
+**所以，在include local job时，如果二者有一致的部分，那么.gitlab-ci.yml将会覆盖ci/localci.yml，对于不一致的部分，将会进行合并处理**
+
+### 14.2 include:file - 包含来自另一个项目的文件
+```
+include:
+  - project: 'demo/demo-maven-service'
+    ref: 'main'
+    file: 'ci/fileci.yml'
+```
+
+**案例一：** 引入demo-maven-service项目main分支的config/ci-cd.yml文件
+**ci/fileci.yml**
+```
+# ci/fileci.yml
+deployjob:
+  stage: deploy
+  script: echo "deploy in the fileci.yml"
+```
+**.gitlab-ci.yml**
+```
+stages:
+  - build
+  - test
+  - deploy
+
+include:
+  - project: 'demo/demo-maven-service'  # 引入另一个仓库的文件
+    ref: 'main'
+    file: 'ci/fileci.yml'
+  
+module-a-build:
+  stage: build
+  script:
+    - echo "hello3a"
+    - sleep 10
+
+module-b-build:
+  stage: build
+  script:
+    - echo "hello3b"
+    - sleep 20
+
+module-a-test:
+  stage: test
+  script:
+    - echo "hello3a"
+    - sleep 5
+  needs: ["module-a-build"]
+
+module-b-test:
+  stage: test
+  script:
+    - echo "hello3b"
+    - sleep 5
+  needs: ["module-b-build"]
+```
+![alt text](e3fec0da-2090-40ba-bd4c-3c192cc8a604.png)
+
+![alt text](72ff4b8b-7780-43a2-97e2-98961a9762a4.png)
+
+覆盖和合并的处理逻辑应该类似local
+
+### 14.3 include:template - 只能使用官方提供的末班
+https://gitlab.com/gitlab-org/gitlab/tree/master/lib/gitlab/ci/templates
+```
+include:
+  - template: JobTemplate.gitlab-ci.yml
+```
+![alt text](d1c59e28-8e29-4028-9a9f-e24ebf83b5e4.png)
+
+
+### 14.4 include:remote - 引入远程仓库的文件
+用于通过HTTP/HTTPS包含来自其他位置的文件，并使用完整URL进行引用。远程文件必须可以通过简单的GET请求公开访问，因为不支持远程URL中的身份验证架构
+```
+include:
+  - remote: 'https://gitlab.com/gitlab-org/gitlab-foss/-/raw/master/lib/gitlab/ci/templates/JobTemplate.gitlab-ci.yml'
+```
+* 注意引用的是raw文件，不是简单的拷贝gitlab文件的浏览器地址栏的url
+
+**案例：使用remote将file中引入的文件通过remote引入**
+**ci/fileci.yml**
+```
+# ci/fileci.yml
+deployjob:
+  stage: deploy
+  script: echo "deploy in the fileci.yml"
+```
+![alt text](affe14b2-d3ab-420a-905b-1a68310403cb.png)
+
+**.gitlab-ci.yml**
+```
+stages:
+  - build
+  - test
+  - deploy
+
+include:
+  - remote: 'http://192.168.50.130:9000/demo/demo-maven-service/-/raw/main/ci/fileci.yml'
+  
+module-a-build:
+  stage: build
+  script:
+    - echo "hello3a"
+    - sleep 10
+
+module-b-build:
+  stage: build
+  script:
+    - echo "hello3b"
+    - sleep 20
+
+module-a-test:
+  stage: test
+  script:
+    - echo "hello3a"
+    - sleep 5
+  needs: ["module-a-build"]
+
+module-b-test:
+  stage: test
+  script:
+    - echo "hello3b"
+    - sleep 5
+  needs: ["module-b-build"]
+```
+
+* 暂未调通，待解决；总是提示include的remote yml无效
+
+### 14.5 补充知识点，gitlab-ci.yml自定义
+![alt text](5d49658c-bf20-4a87-813c-7091d6606746.png)
+* 默认是.gitlab-ci.yml，也可以自定义，比如：.gitlab-ci-custom.yml
 
 ## 15. extends
+```
+yamlCopy
+.tests:
+  script: mvn test
+  stage: test
+  only:
+    refs:
+      - tags
+
+testjob:
+  extends: .tests
+  script: mvn clean test
+  only:
+    variables:
+      - $RSPEC
+```
+* .tests相当于模板作业，`extends: .tests`相当于继承模板作业，如果有相同部分则可以覆盖模板作业中的配置，即继承不同的，覆盖相同的
+
+
+
 
 ## 16. trigger
 
