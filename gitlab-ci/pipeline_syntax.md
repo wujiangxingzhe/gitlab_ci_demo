@@ -1723,11 +1723,82 @@ buildjob:
 * 全局image是maven:3.6.3-jdk-8，buildjob的image是alpine，所以buildjob使用alpine, job image优先级更高
 
 ## 18. services
+工作期间运行的另一个Docker映像，并link到 image 关键字定义的Docker映像。这样，就可以在构建期间访问服务映像。
 
+服务映像可以运行任何应用程序，但是最常见的用例是运行数据库容器，例如 mysql 。与每次安装项目时都安装 mysql 相比，使用现有映像并将其作为附加容器运行更容易，更快捷。
+
+**案例**：
+```
+stages:
+  - build
+  - deploy
+
+#image: maven:3.6.3-jdk-8
+
+variables:
+  GIT_STRATEGY: clone
+  GIT_DEPTH: 0
+  GIT_CLEAN_FLAGS: '-ffdx'
+
+services:
+  - name: mysql:latest
+    alias: mysql-01
+
+buildjob:
+  stage: build
+  tags:
+    - dockerdemo
+  script:
+    - echo "run build job"
+    - sleep 15
+
+deployjob:
+  stage: deploy
+  tags:
+    - dockerdemo
+  script:
+    - echo "run deploy job"
+    - sleep 15
+```
+![alt text](ac2c10bf-7c21-4c9c-a274-860c975b1e94.png)
 
 ## 19. environment
+```
+stages:
+  - build
+  - deploy
+
+#image: maven:3.6.3-jdk-8
+
+variables:
+  GIT_STRATEGY: clone
+  GIT_DEPTH: 0
+  GIT_CLEAN_FLAGS: '-ffdx'
+
+buildjob:
+  stage: build
+  tags:
+    - dockerdemo
+  script:
+    - echo "run build job"
+    - sleep 15
+
+deployjob:
+  stage: deploy
+  tags:
+    - dockerdemo
+  script:
+    - echo "run deploy job"
+    - sleep 15
+  environment:
+    name: staging
+    url: https://www.baidu.com # 可以替换为实际环境的url
+```
+![alt text](a3a3bdfa-d7a5-4281-bdbf-ea004786b618.png)
+* redeploy会再次触发整个pipeline
 
 ## 20. inherit
+* 使用或禁用全局定义的环境变量或默认值
 
 ## 21. template
 
