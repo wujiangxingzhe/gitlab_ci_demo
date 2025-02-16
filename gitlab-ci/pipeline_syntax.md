@@ -1435,21 +1435,301 @@ testjob:
 ```
 * .tests相当于模板作业，`extends: .tests`相当于继承模板作业，如果有相同部分则可以覆盖模板作业中的配置，即继承不同的，覆盖相同的
 
+**案例**
+```
+stages:
+  - test
 
+variables:
+  GIT_STRATEGY: clone
+  GIT_DEPTH: 0
+  GIT_CLEAN_FLAGS: '-ffdx'
+  TST: 'TEST'
 
+.tests:
+  script: echo "mvn test"
+  stage: test
+  only:
+    refs:
+      - branches # 只有当代码推送到分支时，这个作业才会被触发
+
+testjob:
+  extends: .tests
+  script: echo "mvn clean test"
+  only:
+    variables:
+      - $TST # 只有当变量 TST 被定义时，这个作业才会被触发
+```
+* testjob继承了.tests作业，但是覆盖了script脚本，所以执行testjob作业时，会执行`echo "mvn clean test"`
+
+* 合并后的pipieline job如下
+```
+testjob:
+  extends: .tests
+  script: echo "mvn clean test"
+  only:
+    variables:
+      - $TST
+    refs:
+      - branches
+```
+
+![alt text](121aab31-28d6-43eb-b672-5d630381bea3.png)
+
+### 15.1 extends & include
+二者的混用
 
 ## 16. trigger
+* 当GitLab从trigger定义创建的作业启动时，将创建一个下游管道
+* 允许创建多项目管道和子管道
+* 将trigger与when:manual一起使用会导致错误
+* **多项目管道**：**跨多个项目**设置流水线，以便一个项目中的管道可以触发另一个项目中的管道【微服务架构】
+* **父子管道**：在**同一项目**中管道可以触发一组同时运行的子管道，子管道仍然按照阶段顺序执行其每个作业，但是可以自由地继续执行各个阶段，而不必等待父管道中无关的作业完成。f父子管道可以并行运行
+
+### 16.1 多项目管道
+当前面阶段运行完成后，触发demo/demo-maven-service项目main流水线。创建上游管道的用户需要具有对下游项目的访问权限。如果发现下游项目用户没有访问权限以在其中创建管道，则staging作业将被标记为失败。
+```
+staging:
+  variables:
+    ENVIRONMENT: staging # 这个变量将可以传递到下游项目
+  stage: deploy 
+  trigger:
+    project: demo/demo-java-service
+    branch: main
+    strategy: depend
+```
+project 关键字，用于指定下游项目的完整路径。该 branch 关键字指定由指定的项目分支的名称。使用 variables 关键字将变量传递到下游管道。全局变量也会传递给下游项目。上游管道优先于下游管道。如果在上游和下游项目中定义了两个具有相同名称的变量，则在上游项目中定义的变量将优先。默认情况下，一旦创建下游管道，trigger 作业就会以 success 状态完成。strategy: depend 将自身状态从触发的管道合并到源作业(???)。
+
+
+**案例**：在demo/demo-npm-service中触发demo/demo-maven-service的branch ci流水线
+
+* gitlab-ci.yml in demo/demo-npm-service
+```
+stages:
+  - deploy
+
+staging:
+  variables:
+    ENVIRONMENT: staging
+  stage: deploy
+  trigger:
+    project: demo/demo-maven-service
+    branch: ci
+    #strategy: depend
+
+```
+
+* gitlab-ci.yml in demo/demo-maven-service
+```
+stages:
+  - deploy
+
+variables:
+  GIT_STRATEGY: clone
+  GIT_DEPTH: 0
+  GIT_CLEAN_FLAGS: '-ffdx'
+  
+deployjob:
+  stage: deploy
+  script: 
+    - echo "running in the demo-maven-service"
+    - sleep 20
+```
+* 可以看到，即使下游pipeline没有成功，但是上游的pipeline已经成功；如果要使上游的pipeline等待下游的pipeline成功，则需要在trigger中添加strategy: depend
+![alt text](42d02e859cbefa0a8f289e49d0f605e0.png)
+* 在demo-npm-service中添加strategy: depend后，可以看到上游的pipeline在等待下游的pipeline成功
+![alt text](c68089eb6019b4ae056c1db6af2f7a89.png)
+
+* demo-npm-service的pipeline
+![alt text](e8299884-caad-4747-8a46-04475352c11a.png)
+
+* demo-maven-service的pipeline
+![alt text](d0101452-9a01-4494-9e3a-927f64cf1f67.png)
+
+
+### 16.2 父子管道
+* 在同一个项目中
+
+ci/child01.yml
+```
+stages:
+  - build
+
+child-a-build:
+  stage: build
+  script:
+    - echo "child a pipiline"
+    - sleep 15
+```
+.gitlab-ci.yml
+```
+
+stages:
+  - deploy
+  - build
+variables:
+  GIT_STRATEGY: clone
+  GIT_DEPTH: 0
+  GIT_CLEAN_FLAGS: '-ffdx'
+buildjob:
+  stage: build
+  script:
+    - echo "run build job in parent"
+    - sleep 15
+staging:
+  variables:
+    ENVIRONMENT: staging
+  stage: deploy
+  trigger:
+    include: 'ci/child01.yml'
+    strategy: depend
+```
+![alt text](999719a7752241d0fa7d673f4b8f0663.png)
+
+![alt text](5758edeb5c58a50af511c17602ca8e67.png)
+
+![alt text](1fc83f1e0f897b4da3e5c182d90b8db1.png)
+
+* 在同一个项目中，父管道要等待子管道结束才执行，需要在父管道的trigger中添加strategy: depend
+* 如果不加strategy: depend，父管道会先执行，子管道会并行执行
+![alt text](aa4fa0b7-c78b-492a-b983-5fdc6386712e.png)
+
 
 ## 17. images
+* 默认在注册runner的时候需要填写一个基础的镜像，请记住一点只要使用执行器为docker类型的runner，所有的操作运行都会在容器中运行
+* job image优先级高于全局image
+
+### 17.1 默认image
+```
+stages:
+  - build
+  - deploy
+
+image: maven:3.6.3-jdk-8
+
+variables:
+  GIT_STRATEGY: clone
+  GIT_DEPTH: 0
+  GIT_CLEAN_FLAGS: '-ffdx'
+
+buildjob:
+  stage: build
+  tags:
+    - dockerdemo
+  script:
+    - echo "run build job"
+    - sleep 15
+```
+![alt text](8d14e88e99456775adf96192d4924dfa.png)
+* 没有指定image时，默认使用docker excuetor注册时指定的image
+
+### 17.2 全局image
+```
+stages:
+  - build
+  - deploy
+
+image: maven:3.6.3-jdk-8
+
+variables:
+  GIT_STRATEGY: clone
+  GIT_DEPTH: 0
+  GIT_CLEAN_FLAGS: '-ffdx'
+
+buildjob:
+  stage: build
+  tags:
+    - dockerdemo
+  script:
+    - echo "run build job"
+    - sleep 15
+
+deployjob:
+  stage: deploy
+  tags:
+    - dockerdemo
+  script:
+    - echo "run deploy job"
+    - sleep 15
+```
+![alt text](85d81056-7d68-4ef9-85e2-bd89393bf52e.png)
+
+![alt text](fc904881-ac5c-4bc0-8050-112796d1298c.png)
+
+* buildjob和deployjob都使用了全局image,maven:3.6.3-jdk-8
+
+### 17.3 job指定image
+* buildjob指定了image
+* deployjob没有指定image
+```
+stages:
+  - build
+  - deploy
+
+#image: maven:3.6.3-jdk-8
+
+variables:
+  GIT_STRATEGY: clone
+  GIT_DEPTH: 0
+  GIT_CLEAN_FLAGS: '-ffdx'
+
+buildjob:
+  image: maven:3.6.3-jdk-8
+  stage: build
+  tags:
+    - dockerdemo
+  script:
+    - echo "run build job"
+    - sleep 15
+
+deployjob:
+  stage: deploy
+  tags:
+    - dockerdemo
+  script:
+    - echo "run deploy job"
+    - sleep 15
+```
+![alt text](714ada6b-8d4e-47d9-91f5-16fcdbd28521.png)
+
+![alt text](ceb9f815-547c-482f-8933-0ecc7bd340dd.png)
+
+* buildjob指定了image，使用maven:3.6.3-jdk-8, deployjob没有指定image，使用docker executor注册时指定的image
+
+### 17.4 job image和全局image同时存在
+* job image优先级高于全局image
+```
+stages:
+  - build
+  - deploy
+
+image: maven:3.6.3-jdk-8
+
+variables:
+  GIT_STRATEGY: clone
+  GIT_DEPTH: 0
+  GIT_CLEAN_FLAGS: '-ffdx'
+
+buildjob:
+  image: alpine
+  stage: build
+  tags:
+    - dockerdemo
+  script:
+    - echo "run build job"
+    - sleep 15
+```
+![alt text](ac45916d-da3a-4561-a7a5-b45aadcc5e87.png)
+* 全局image是maven:3.6.3-jdk-8，buildjob的image是alpine，所以buildjob使用alpine, job image优先级更高
 
 ## 18. services
 
 
 ## 19. environment
 
+## 20. inherit
 
-
-## 20. template
+## 21. template
 
 
 
@@ -1473,6 +1753,7 @@ fatal: The remote end hung up unexpectedly
 Solution:
 ```
 variables:
+  GIT_STRATEGY: clone
   GIT_DEPTH: 0
   GIT_CLEAN_FLAGS: '-ffdx'
 
