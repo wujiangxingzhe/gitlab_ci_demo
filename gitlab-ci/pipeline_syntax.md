@@ -1605,7 +1605,7 @@ stages:
   - build
   - deploy
 
-image: maven:3.6.3-jdk-8
+#image: maven:3.6.3-jdk-8
 
 variables:
   GIT_STRATEGY: clone
